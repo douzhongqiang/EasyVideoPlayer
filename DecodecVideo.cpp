@@ -11,6 +11,7 @@ DecodecVideo::DecodecVideo(QObject* parent)
     , m_nHeadIndex(0)
     , m_nEndIndex(0)
     , m_nCurrentSize(0)
+	, m_nPlayerStatus(0)
 {
     avcodec_register_all();
     m_pFrame = av_frame_alloc();
@@ -84,6 +85,7 @@ bool DecodecVideo::openVideoFile(const QString& fileName)
 
 void DecodecVideo::getFrameData(uchar*& imageData)
 {
+	//qDebug() << __FUNCDNAME__ << " Current Size Is " << m_nCurrentSize;
     if (m_nCurrentSize <= 0)
     {
         imageData = nullptr;
@@ -106,6 +108,30 @@ void DecodecVideo::getFrameData(uchar*& imageData)
         m_nHeadIndex = 0;
     m_nCurrentSize--;
     m_semaphore.release();
+
+	//qDebug() << "Current Size Is " << m_nCurrentSize;
+}
+
+void DecodecVideo::getFrameData(AVFrame*& frame)
+{
+	//qDebug() << __FUNCDNAME__ << " Current Size Is " << m_nCurrentSize;
+	if (m_nCurrentSize <= 0)
+	{
+		frame = nullptr;
+		return;
+	}
+
+	frame = m_frameData[m_nHeadIndex++];
+
+	if (m_nHeadIndex == m_nFrameBufferSize)
+		m_nHeadIndex = 0;
+	m_nCurrentSize--;
+	m_semaphore.release();
+}
+
+void DecodecVideo::freeFrame(AVFrame* frame)
+{
+	av_frame_free(&frame);
 }
 
 const DecodecVideo::DecodecVideInfo& DecodecVideo::getCurrentInfo(void)
@@ -115,7 +141,7 @@ const DecodecVideo::DecodecVideInfo& DecodecVideo::getCurrentInfo(void)
 
 void DecodecVideo::getAudioBufferData(QByteArray& byte)
 {
-    QMutexLocker locker(&m_audioMutex);
+    //QMutexLocker locker(&m_audioMutex);
 
     byte = m_audioArray;
     m_audioArray.clear();
@@ -130,19 +156,33 @@ void DecodecVideo::setAudioPlayer(AudioPlayerThread* audioPlayer)
 void DecodecVideo::getAudioOutputInfos(int& sampleRato, int& sampleSize, int& channelSize)
 {
     sampleRato = m_decodecInfo.sampleRate;
-    sampleSize = 16;
-    channelSize = 2;
+	if (m_decodecInfo.needToConver)
+	{
+		sampleSize = 16;
+		channelSize = 2;
+	}
+	else
+	{
+		sampleSize = m_decodecInfo.sampleSize;
+		channelSize = m_decodecInfo.channelSize;
+	}
 }
 
 void DecodecVideo::run(void)
 {
     while (!this->isInterruptionRequested())
     {
+		if (m_nPlayerStatus == (int)Player_Pause)
+		{
+			QThread::msleep(10);
+			continue;
+		}
+
         AVPacket pkt;
         int result = av_read_frame(m_pFormatContext, &pkt);
         if (result)
-            continue;
-        
+            break;
+
         // decode video and audio
         if (pkt.stream_index == m_nVideoIndex)
             decodecVideo(&pkt);
@@ -155,10 +195,11 @@ void DecodecVideo::run(void)
             this->getAudioBufferData(audioArray);
             if (m_pAudioThread && audioArray.size() > 0)
                 m_pAudioThread->setAudioData(audioArray.data(), audioArray.size());
-            qDebug() << "Audio Data Size is " << audioArray.size();
+            //qDebug() << "Audio Data Size is " << audioArray.size();
         }
 
         av_packet_unref(&pkt);
+		QThread::msleep(5);
     }
 }
 
@@ -183,12 +224,18 @@ bool DecodecVideo::openVideoCodec(void)
     }
 
     // fill info
-    m_decodecInfo.width = m_pVideoCodecContext->width;
-    m_decodecInfo.height = m_pVideoCodecContext->height;
+	m_decodecInfo.width = m_pVideoCodecContext->width;
+	m_decodecInfo.height = m_pVideoCodecContext->height;
+#ifdef USEDOPENFLRENDER
     if (m_pVideoCodecContext->pix_fmt == AV_PIX_FMT_YUV420P)
         m_decodecInfo.isYUV420P = true;
     else
         m_decodecInfo.isYUV420P = false;
+#else
+	m_decodecInfo.isYUV420P = false;
+#endif
+
+	m_decodecInfo.totalTime = m_pFormatContext->duration * 1.0 / AV_TIME_BASE;
 
     return true;
 }
@@ -214,6 +261,22 @@ bool DecodecVideo::openAudioCodec(void)
     // fill audio info
     m_decodecInfo.sampleRate = m_pAudioCodecContext->sample_rate;
     m_decodecInfo.channelSize = m_pAudioCodecContext->channels;
+	m_decodecInfo.needToConver = true;
+	if (m_pAudioCodecContext->sample_fmt == AV_SAMPLE_FMT_S16)
+	{
+		m_decodecInfo.needToConver = false;
+		m_decodecInfo.sampleSize = 16;
+	}
+	else if (m_pAudioCodecContext->sample_fmt == AV_SAMPLE_FMT_S32)
+	{
+		m_decodecInfo.needToConver = false;
+		m_decodecInfo.sampleSize = 32;
+	}
+	else if (m_pAudioCodecContext->sample_fmt == AV_SAMPLE_FMT_U8)
+	{
+		m_decodecInfo.needToConver = false;
+		m_decodecInfo.sampleSize = 8;
+	}
     m_pAudioCodecContext->channel_layout = av_get_default_channel_layout(m_pAudioCodecContext->channels);
 
     if (m_pTempBuffer == nullptr)
@@ -227,55 +290,78 @@ bool DecodecVideo::openAudioCodec(void)
 // decodec Video
 void DecodecVideo::decodecVideo(AVPacket* packet)
 { 
+	// acquire 1 
+	m_semaphore.acquire();
+
+	/*QTime testTime;
+	testTime.start();*/
+
+	AVFrame *tempFrame = av_frame_alloc();
+
     // send packet
+	/*int pix = 0;
+	int result = avcodec_decode_video2(m_pVideoCodecContext, tempFrame, &pix, packet);
+	if (result <= 0)
+		return;*/
+
     if (avcodec_send_packet(m_pVideoCodecContext, packet))
         return;
 
     // recv frame
-    if (avcodec_receive_frame(m_pVideoCodecContext, m_pFrame))
+    if (avcodec_receive_frame(m_pVideoCodecContext, tempFrame))
         return;
+	//qDebug() << "[1] " << testTime.elapsed();
 
-    // acquire 1 
-    m_semaphore.acquire();
+	m_frameData[m_nEndIndex] = tempFrame;
 
-    // fill rgb data
-    if (!m_decodecInfo.isYUV420P)
-    {
-        // create RGB Frame
-        if (m_pRGBFrame == nullptr)
-            m_pRGBFrame = av_frame_alloc();
+  //  // fill rgb data
+  //  if (!m_decodecInfo.isYUV420P)
+  //  {
+  //      // create RGB Frame
+  //      if (m_pRGBFrame == nullptr)
+  //          m_pRGBFrame = av_frame_alloc();
 
-        avpicture_fill((AVPicture *)m_pRGBFrame, m_pImageData[m_nEndIndex].pImageData, AV_PIX_FMT_RGB24, m_pFrame->width, m_pFrame->height);
-        frameToRgbImage(m_pRGBFrame, m_pFrame);
-    }
-    else
-    {
-        int len = 0;
-        memcpy(m_pImageData[m_nEndIndex].pImageData + len, m_pFrame->data[0], m_pFrame->width * m_pFrame->height);
+  //      avpicture_fill((AVPicture *)m_pRGBFrame, m_pImageData[m_nEndIndex].pImageData, AV_PIX_FMT_RGB24, m_pFrame->width, m_pFrame->height);
+  //      frameToRgbImage(m_pRGBFrame, m_pFrame);
+  //  }
+  //  else
+  //  {
+		//m_frameData[m_nEndIndex] = tempFrame;
+  //      /*int len = 0;
+  //      memcpy(m_pImageData[m_nEndIndex].pImageData + len, m_pFrame->data[0], m_pFrame->width * m_pFrame->height);
 
-        len += m_pFrame->width * m_pFrame->height;
-        memcpy(m_pImageData[m_nEndIndex].pImageData + len, m_pFrame->data[1], m_pFrame->width / 2 * m_pFrame->height / 2);
+  //      len += m_pFrame->width * m_pFrame->height;
+  //      memcpy(m_pImageData[m_nEndIndex].pImageData + len, m_pFrame->data[1], m_pFrame->width / 2 * m_pFrame->height / 2);
 
-        len += m_pFrame->width / 2 * m_pFrame->height / 2;
-        memcpy(m_pImageData[m_nEndIndex].pImageData + len, m_pFrame->data[2], m_pFrame->width / 2 * m_pFrame->height / 2);
-    }
+  //      len += m_pFrame->width / 2 * m_pFrame->height / 2;
+  //      memcpy(m_pImageData[m_nEndIndex].pImageData + len, m_pFrame->data[2], m_pFrame->width / 2 * m_pFrame->height / 2);*/
+  //  }
+	//qDebug() << "[2] " << testTime.elapsed();
 
-    // get pts
-    int64_t pts = 0;
-    if (packet->dts == AV_NOPTS_VALUE && packet->pts && packet->pts != AV_NOPTS_VALUE)
-        pts = packet->pts;
-    else if (packet->dts != AV_NOPTS_VALUE)
-        pts = packet->dts;
-    // calc video time
-    qreal time = pts * av_q2d(m_pFormatContext->streams[m_nVideoIndex]->time_base);
-    m_pImageData[m_nEndIndex].currentPts = time;
-    qDebug() << "Decodec Video is " << time << "; pts is " << m_pFrame->pts << "; calc time is " << \
+    //// get pts
+    //int64_t pts = 0;
+    //if (packet->dts == AV_NOPTS_VALUE && packet->pts && packet->pts != AV_NOPTS_VALUE)
+    //    pts = packet->pts;
+    //else if (packet->dts != AV_NOPTS_VALUE)
+    //    pts = packet->dts;
+    //// calc video time
+    //qreal time = pts * av_q2d(m_pFormatContext->streams[m_nVideoIndex]->time_base);
+	//m_pImageData[m_nEndIndex].currentPts = m_pFrame->pts;
+
+    //qDebug() << "Decodec Video is " << time << "; pts is " << m_pFrame->pts << "; calc time is " << \
         m_pFrame->pts * av_q2d(m_pFormatContext->streams[m_nVideoIndex]->time_base);
+
+	//qDebug() << "[3] " << testTime.elapsed();
 
     // update values
     if (++m_nEndIndex == m_nFrameBufferSize)
         m_nEndIndex = 0;
     ++m_nCurrentSize;
+
+	/*qDebug() << "[4] " << testTime.elapsed();
+	qDebug() << "-----------------------------------------------------";*/
+
+	//qDebug() << "Current Size Is " << m_nCurrentSize;
 
     //emit updateDisplay();
 }
@@ -283,7 +369,7 @@ void DecodecVideo::decodecVideo(AVPacket* packet)
 // decodec Audio
 void DecodecVideo::decodecAudio(AVPacket* packet)
 {
-    qDebug() << "Decodec Audio";
+    //qDebug() << "Decodec Audio";
     // send packet
     if (avcodec_send_packet(m_pAudioCodecContext, packet))
         return;
@@ -292,13 +378,21 @@ void DecodecVideo::decodecAudio(AVPacket* packet)
     if (avcodec_receive_frame(m_pAudioCodecContext, m_pFrame))
         return;
 
-    QMutexLocker locker(&m_audioMutex);
+    //QMutexLocker locker(&m_audioMutex);
     // add to buffer
-    int len = frameSameSampe(m_pFrame, m_pTempBuffer, 10000);
-    if (len > 0)
-        m_audioArray.append((char*)m_pTempBuffer, len);
+	if (m_decodecInfo.needToConver)
+	{
+		int len = frameSameSampe(m_pFrame, m_pTempBuffer, 10000);
+		if (len > 0)
+			m_audioArray.append((char*)m_pTempBuffer, len);
+	}
+	else
+	{
+		m_audioArray.append((char*)m_pFrame->data[0], \
+			m_pFrame->linesize[0] * m_decodecInfo.channelSize * (m_decodecInfo.sampleRate / 8));
+	}
 
-    qDebug() << "Audio time is " << m_pFrame->pts * av_q2d(m_pFormatContext->streams[m_nAudioIndex]->time_base);
+    //qDebug() << "Audio time is " << m_pFrame->pts * av_q2d(m_pFormatContext->streams[m_nAudioIndex]->time_base);
 }
 
 void DecodecVideo::frameToRgbImage(AVFrame* pDest, AVFrame* frame)
@@ -341,9 +435,8 @@ int DecodecVideo::frameSameSampe(AVFrame* frame, uchar* pDest, int size)
     return len;
 }
 
-void DecodecVideo::updateToDisplay(qreal currentTime)
+void DecodecVideo::updateToDisplay2(qreal currentTime)
 {
-    //return;
     if (m_nCurrentSize <= 0 || currentTime < m_pImageData[m_nHeadIndex].currentPts)
         return;   
 
@@ -367,6 +460,80 @@ void DecodecVideo::updateToDisplay(qreal currentTime)
             break;
     }
 
-    qDebug() << "Current Play Video is " << m_pImageData[m_nHeadIndex].currentPts;
-    emit updateDisplay();
+    //qDebug() << "Current Play Video is " << m_pImageData[m_nHeadIndex].currentPts;
+    emit updateDisplay(currentTime);
+}
+
+void DecodecVideo::updateToDisplay(qreal currentTime)
+{
+	if (m_nCurrentSize <= 0)
+		return;
+	qreal time = m_frameData[m_nHeadIndex]->pts * av_q2d(m_pFormatContext->streams[m_nVideoIndex]->time_base);
+	if (currentTime < time)
+		return;
+
+	while (1)
+	{
+		int index = m_nHeadIndex + 1;
+		if (index == m_nFrameBufferSize)
+			index = 0;
+
+		if (index == m_nEndIndex)
+			break;
+
+		qreal tempPts = m_frameData[index]->pts * av_q2d(m_pFormatContext->streams[m_nVideoIndex]->time_base);;
+		if (currentTime > tempPts && m_nCurrentSize > 0)
+		{
+			freeFrame(m_frameData[m_nHeadIndex]);
+			m_nHeadIndex = index;
+			m_nCurrentSize--;
+			m_semaphore.release();
+		}
+		else
+			break;
+	}
+
+	//qDebug() << "Current Play Video is " << m_pImageData[m_nHeadIndex].currentPts;
+	emit updateDisplay(currentTime);
+}
+
+void DecodecVideo::seekVideo(qreal time)
+{
+	if (time < 0 || time > m_decodecInfo.totalTime || m_pFormatContext == nullptr || m_nVideoIndex < 0)
+		return;
+
+	avformat_flush(m_pFormatContext);
+	//time * 1000 * m_pFormatContext->streams[m_nVideoIndex]->time_base
+	int64_t timestamp = time * AV_TIME_BASE + m_pFormatContext->start_time;
+	int result = av_seek_frame(m_pFormatContext, -1, timestamp, AVSEEK_FLAG_BACKWARD | AVSEEK_FLAG_FRAME);
+	if (result < 0)
+		qDebug() << "Seek Error!";
+
+	m_nPlayerStatus = (int)Player_Pause;
+	QThread::msleep(30);
+	m_pAudioThread->setCurrentTimeForce(time);
+
+	m_nCurrentSize = 0;
+	m_nHeadIndex = 0;
+	m_nEndIndex = 0;
+	int number = m_semaphore.available();
+	m_semaphore.release(number);
+	m_nPlayerStatus = (int)Player_Playing;
+}
+
+void DecodecVideo::setCurrentPlayerStatus(PlayStatus status)
+{
+	m_nPlayerStatus = status;
+}
+
+DecodecVideo::PlayStatus DecodecVideo::getCurrentPlayerStatus(void)
+{
+	int status = m_nPlayerStatus;
+	return (PlayStatus)status;
+}
+
+// for test
+void DecodecVideo::testCall(void)
+{
+	emit updateDisplay(1);
 }

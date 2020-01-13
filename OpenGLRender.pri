@@ -11,10 +11,12 @@ HEADERS += ./DecodecVideo.h \
     ./OpenGLRender.h \
     ./AudioPlayerThread.h \
     ./VideoPlayOper.h \
-    ./VideoPlayerWidget.h
+    ./VideoPlayerWidget.h \
+	./QtRenderWidget.h
 SOURCES += ./AudioPlayerThread.cpp \
     ./DecodecVideo.cpp \
     ./main.cpp \
     ./OpenGLRender.cpp \
     ./VideoPlayerWidget.cpp \
-    ./VideoPlayOper.cpp
+    ./VideoPlayOper.cpp \
+	./QtRenderWidget.cpp

@@ -2,6 +2,7 @@
 #include "OpenGLRender.h"
 #include "DecodecVideo.h"
 #include "AudioPlayerThread.h"
+#include "VideoRenderBase.h"
 #include <QTimer>
 VideoPlayOper::VideoPlayOper(QObject* parent)
 {
@@ -17,7 +18,7 @@ VideoPlayOper::~VideoPlayOper()
 
 }
 
-void VideoPlayOper::setVideoRender(OpenGLRender* render)
+void VideoPlayOper::setVideoRender(VideoRenderBase* render)
 {
     m_pRender = render;
 }
@@ -28,7 +29,8 @@ void VideoPlayOper::setVideoDecodec(DecodecVideo* codec)
     m_pCodec->setAudioPlayer(m_pAudioPlayerThread);
     m_pAudioPlayerThread->setDecodec(m_pCodec);
 
-    QObject::connect(m_pCodec, &DecodecVideo::updateDisplay, this, &VideoPlayOper::onTimeout);
+    //QObject::connect(m_pCodec, &DecodecVideo::updateDisplay, this, &VideoPlayOper::onTimeout);
+	QObject::connect(m_pCodec, &DecodecVideo::updateDisplay, this, &VideoPlayOper::onTimeout2);
 }
 
 void VideoPlayOper::play(const QString& name)
@@ -51,7 +53,12 @@ void VideoPlayOper::play(const QString& name)
     m_pAudioPlayerThread->start();
 }
 
-void VideoPlayOper::onTimeout(void)
+void VideoPlayOper::seek(qreal time)
+{
+	m_pCodec->seekVideo(time);
+}
+
+void VideoPlayOper::onTimeout(qreal time)
 {
     uchar* pImageData = nullptr;
     m_pCodec->getFrameData(pImageData);
@@ -71,9 +78,16 @@ void VideoPlayOper::onTimeout(void)
         m_pRender->setYUVData(yuvData, videoInfo.width, videoInfo.height);
     }
 
-    // set Audio Data
-    /*QByteArray audioData;
-    m_pCodec->getAudioBufferData(audioData);
-    if (audioData.size() > 0)
-        m_pAudioPlayerThread->setAudioData(audioData.data(), audioData.size());*/
+	//emit updateDisplayInfos(time);
+}
+
+void VideoPlayOper::onTimeout2(void)
+{
+	AVFrame* frame = nullptr;
+	m_pCodec->getFrameData(frame);
+	if (frame == nullptr)
+		return;
+
+	m_pRender->setYUVData(frame->data, frame->width, frame->height);
+	m_pCodec->freeFrame(frame);
 }

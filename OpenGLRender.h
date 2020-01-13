@@ -4,12 +4,13 @@
 #include <QOpenGLWidget>
 #include <qopengl.h>
 #include <QMatrix4x4>
+#include "VideoRenderBase.h"
 #include "DecodecVideo.h"
 
 class QOpenGLFunctions;
 class QOpenGLShader;
 class QOpenGLShaderProgram;
-class OpenGLRender : public QOpenGLWidget
+class OpenGLRender : public QOpenGLWidget, public VideoRenderBase
 {
     Q_OBJECT
 
@@ -18,11 +19,11 @@ public:
     ~OpenGLRender();
 
     // setRGBData
-    void setRGBData(const uchar* pImageData, int width, int height);
+    void setRGBData(const uchar* pImageData, int width, int height) override;
     // setYUVData
-    void setYUVData(uchar* const pImageData[], int width, int height);
+    void setYUVData(uchar* const pImageData[], int width, int height) override;
     // rebind VBO
-    void rebindVBO(int width, int height);
+    void rebindVBO(int width, int height) override;
 
 protected:
     void initializeGL(void) override;

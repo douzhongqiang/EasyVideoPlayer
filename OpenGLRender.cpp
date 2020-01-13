@@ -12,7 +12,7 @@ OpenGLRender::OpenGLRender(QWidget *parent)
                            1.13983f, -0.58060f, 0.0f, 0.0f, \
                            0.0f, 0.0f, 0.0f, 0.0f)
 {
-   
+	this->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
 OpenGLRender::~OpenGLRender()
@@ -27,7 +27,7 @@ GLuint OpenGLRender::createGPUProgram(const QString& vertexShaderFile, const QSt
     bool result = m_pVertexShader->compileSourceFile(vertexShaderFile);
     if (!result)
     {
-        qDebug() << m_pVertexShader->log();
+        //qDebug() << m_pVertexShader->log();
         delete m_pVertexShader;
         m_pVertexShader = nullptr;
     }
@@ -37,7 +37,7 @@ GLuint OpenGLRender::createGPUProgram(const QString& vertexShaderFile, const QSt
     result = m_pFragmentShader->compileSourceFile(fragmentShaderFile);
     if (!result)
     {
-        qDebug() << m_pFragmentShader->log();
+        //qDebug() << m_pFragmentShader->log();
         delete m_pVertexShader;
         m_pVertexShader = nullptr;
         delete m_pFragmentShader;
@@ -134,6 +134,19 @@ void OpenGLRender::initializeGL(void)
     // bind YUV texture
     createYUVTexture();
 
+	// bind VBO
+	m_pFunc->glBindBuffer(GL_ARRAY_BUFFER, m_vboId);
+
+	// 使用DrawArrays绘制
+	m_pFunc->glEnableVertexAttribArray(m_posVector);
+	m_pFunc->glVertexAttribPointer(m_posVector, 3, GL_FLOAT, GL_FALSE, sizeof(VertexInfo), (void*)0);
+	m_pFunc->glEnableVertexAttribArray(m_colorVector);
+	m_pFunc->glVertexAttribPointer(m_colorVector, 4, GL_FLOAT, GL_FALSE, sizeof(VertexInfo), (void*)(sizeof(float) * 3));
+	m_pFunc->glEnableVertexAttribArray(m_coordVector);
+	m_pFunc->glVertexAttribPointer(m_coordVector, 2, GL_FLOAT, GL_FALSE, sizeof(VertexInfo), (void*)(sizeof(float) * 7));
+	//OpenGLCore->glDrawArrays(GL_TRIANGLES, 0, 3);
+	m_pFunc->glBindBuffer(GL_ARRAY_BUFFER, 0);
+
     m_pShaderProgram->bind();
 }
 
@@ -173,19 +186,6 @@ void OpenGLRender::paintGL(void)
         m_pFunc->glBindTexture(GL_TEXTURE_2D, m_textureVId);
         m_pFunc->glUniform1i(m_textureV, 2);
     }
-
-    // bind VBO
-    m_pFunc->glBindBuffer(GL_ARRAY_BUFFER, m_vboId);
-
-    // 使用DrawArrays绘制
-    m_pFunc->glEnableVertexAttribArray(m_posVector);
-    m_pFunc->glVertexAttribPointer(m_posVector, 3, GL_FLOAT, GL_FALSE, sizeof(VertexInfo), (void*)0);
-    m_pFunc->glEnableVertexAttribArray(m_colorVector);
-    m_pFunc->glVertexAttribPointer(m_colorVector, 4, GL_FLOAT, GL_FALSE, sizeof(VertexInfo), (void*)(sizeof(float) * 3));
-    m_pFunc->glEnableVertexAttribArray(m_coordVector);
-    m_pFunc->glVertexAttribPointer(m_coordVector, 2, GL_FLOAT, GL_FALSE, sizeof(VertexInfo), (void*)(sizeof(float) * 7));
-    //OpenGLCore->glDrawArrays(GL_TRIANGLES, 0, 3);
-    m_pFunc->glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     // 使用DeawElement绘制
     m_pFunc->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_iboId);

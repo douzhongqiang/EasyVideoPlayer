@@ -7,6 +7,7 @@ class OpenGLRender;
 class DecodecVideo;
 class AudioPlayerThread;
 class QTimer;
+class VideoRenderBase;
 class VideoPlayOper : public QObject
 {
     Q_OBJECT
@@ -14,19 +15,24 @@ public:
     VideoPlayOper(QObject* parent = nullptr);
     ~VideoPlayOper();
 
-    void setVideoRender(OpenGLRender* render);
+    void setVideoRender(VideoRenderBase* render);
     void setVideoDecodec(DecodecVideo* codec);
 
     void play(const QString& name);
+	void seek(qreal time);
 
 private:
-    OpenGLRender* m_pRender = nullptr;
+	VideoRenderBase* m_pRender = nullptr;
     DecodecVideo* m_pCodec = nullptr;
     AudioPlayerThread *m_pAudioPlayerThread = nullptr;
 
     QTimer* m_pTimer = nullptr;
 
 private slots:
-    void onTimeout(void);
+    void onTimeout(qreal time);
+	void onTimeout2(void);
+	
+signals:
+	void updateDisplayInfos(qreal time);
 };
 #endif

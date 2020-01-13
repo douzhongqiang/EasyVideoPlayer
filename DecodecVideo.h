@@ -7,6 +7,7 @@
 #include <QSemaphore>
 #include <QMutex>
 #include <atomic>
+#include <QTime>
 extern "C"{
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -32,6 +33,10 @@ public:
         int sampleRate = 44100;
         int sampleSize = 16;
         int channelSize = 2;
+		bool needToConver = true;
+
+		// global infos
+		qreal totalTime = 0;
     };
 
     struct FrameData
@@ -39,6 +44,14 @@ public:
         qreal currentPts = 0.0;
         uchar* pImageData;
     };
+
+	enum PlayStatus
+	{
+		Player_Normal,
+		Player_Playing,
+		Player_Pause,
+		Player_Stop
+	};
 
 public:
     DecodecVideo(QObject* parent = nullptr);
@@ -48,11 +61,14 @@ public:
     bool openVideoFile(const QString& fileName);
     // get frame data
     void getFrameData(uchar*& imageData);
+	void getFrameData(AVFrame*& frame);
+	void freeFrame(AVFrame* frame);
     // get current infos
     const DecodecVideInfo& getCurrentInfo(void);
 
     // updateToDisplay
     void updateToDisplay(qreal currentTime);
+	void updateToDisplay2(qreal currentTime);
 
     // get Audio BufferData
     void getAudioBufferData(QByteArray& byte);
@@ -62,6 +78,16 @@ public:
     void getAudioOutputInfos(int& sampleRato, int& sampleSize, int& channelSize);
 
     void run(void) override;
+
+	// seek Video
+	void seekVideo(qreal time);
+
+	// set Current Status
+	void setCurrentPlayerStatus(PlayStatus status);
+	PlayStatus getCurrentPlayerStatus(void);
+
+	// for test
+	void testCall(void);
 
 private:
     AVFormatContext* m_pFormatContext = nullptr;
@@ -82,6 +108,7 @@ private:
     
     // Image Data Buffer
     FrameData m_pImageData[60];
+	AVFrame* m_frameData[60];
     uchar* m_pDestBufferData = nullptr;
 
     // info
@@ -96,6 +123,7 @@ private:
     std::atomic<int> m_nHeadIndex;
     std::atomic<int> m_nEndIndex;
     std::atomic<int> m_nCurrentSize;
+	std::atomic<int> m_nPlayerStatus;
 
     // open video decodec
     bool openVideoCodec(void);
@@ -116,7 +144,10 @@ private:
     // decodec Audio
     void decodecAudio(AVPacket* packet);
 
+	// For Test
+	QTime m_time;
+
 signals:
-    void updateDisplay(void);
+    void updateDisplay(qreal time);
 };
 #endif

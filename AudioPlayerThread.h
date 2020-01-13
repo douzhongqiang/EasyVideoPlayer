@@ -8,6 +8,7 @@
 #include <QMutex>
 #include <QWaitCondition>
 #include <atomic>
+#include <QTime>
 
 class DecodecVideo;
 class AudioPlayerThread : public QThread
@@ -30,6 +31,9 @@ public:
     // set decodec 
     void setDecodec(DecodecVideo* decodec);
 
+	// set current time
+	void setCurrentTimeForce(qreal time);
+
 private:
     QAudioFormat m_format;
     QAudioOutput* m_pAudioOutput = nullptr;
@@ -45,8 +49,11 @@ private:
 
     std::atomic<int> m_nStartPopIndex;
     std::atomic<int> m_nEndPushIndex;
-    std::atomic<int> m_nTotalCanUsed;
 
+    std::atomic<int> m_nTotalCanUsed;
     std::atomic<qreal> m_nCurrentPlayIndex;
+
+	// for test
+	QTime m_time;
 };
 #endif
