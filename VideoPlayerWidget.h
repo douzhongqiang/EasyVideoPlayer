@@ -11,6 +11,7 @@
 #include "QtRenderWidget.h"
 #include "VideoRenderBase.h"
 
+class EncodecGif;
 class VideoPlayerWidget : public QWidget
 {
     Q_OBJECT
@@ -28,12 +29,15 @@ private:
 	QLabel* m_pTimeTag = nullptr;
 	QPushButton* m_pPlayButton = nullptr;
 
+	EncodecGif* m_pEncodecGif = nullptr;
+
 	void setCurrentDisplayTime(qreal time);
 
 private slots:
     void onClickedLoadButton(void);
 	void onSliderValueChanged(int value);
 	void onPlayButtonClicked(void);
+	void onClickedCreateGifButton(void);
 
 	void onUpdateDisplayInfos(qreal time);
 

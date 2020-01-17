@@ -3,6 +3,7 @@
 #include <QOpenGLShader>
 #include <QOpenGLShaderProgram>
 #include <QSurfaceFormat>
+#include <QPainter>
 #include <QDebug>
 
 OpenGLRender::OpenGLRender(QWidget *parent)
@@ -130,7 +131,8 @@ void OpenGLRender::initializeGL(void)
     m_pFunc->glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     // bind texture
-    createTexture(m_textureId, ":/Resources/25.jpg");
+    //createTexture(m_textureId, ":/Resources/25.jpg");
+	createTexture(m_textureId, ":/Resources/25.jpg");
     // bind YUV texture
     createYUVTexture();
 
@@ -155,9 +157,15 @@ void OpenGLRender::paintGL(void)
     /*bool result = m_pShaderProgram->bind();
     if (!result)
         return;*/
+
+	QPainter painter(this);
+	painter.beginNativePainting();
+
+	m_pShaderProgram->bind();
     QMatrix4x4 nMormalMat;
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glClearColor(41.0f / 255.0f, 71.0f / 255.0f, 121.0f / 255.0f, 1.0f);
+	
+	m_pFunc->glClearColor(41.0f / 255.0f, 71.0f / 255.0f, 121.0f / 255.0f, 1.0f);
+	m_pFunc->glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     m_pFunc->glUniformMatrix4fv(m_mLocalMat, 1, GL_FALSE, nMormalMat.data());
     m_pFunc->glUniformMatrix4fv(m_vLocalMat, 1, GL_FALSE, nMormalMat.data());
@@ -187,10 +195,36 @@ void OpenGLRender::paintGL(void)
         m_pFunc->glUniform1i(m_textureV, 2);
     }
 
+	// bind VBO
+	m_pFunc->glBindBuffer(GL_ARRAY_BUFFER, m_vboId);
+
+	// 使用DrawArrays绘制
+	m_pFunc->glEnableVertexAttribArray(m_posVector);
+	m_pFunc->glVertexAttribPointer(m_posVector, 3, GL_FLOAT, GL_FALSE, sizeof(VertexInfo), (void*)0);
+	m_pFunc->glEnableVertexAttribArray(m_colorVector);
+	m_pFunc->glVertexAttribPointer(m_colorVector, 4, GL_FLOAT, GL_FALSE, sizeof(VertexInfo), (void*)(sizeof(float) * 3));
+	m_pFunc->glEnableVertexAttribArray(m_coordVector);
+	m_pFunc->glVertexAttribPointer(m_coordVector, 2, GL_FLOAT, GL_FALSE, sizeof(VertexInfo), (void*)(sizeof(float) * 7));
+	//OpenGLCore->glDrawArrays(GL_TRIANGLES, 0, 3);
+	m_pFunc->glBindBuffer(GL_ARRAY_BUFFER, 0);
+
     // 使用DeawElement绘制
     m_pFunc->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_iboId);
     m_pFunc->glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     m_pFunc->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	m_pShaderProgram->release();
+	
+	painter.endNativePainting();
+
+	/*QPen nPen;
+	nPen.setColor(QColor(255, 0, 0));
+	QFont font = this->font();
+	font.setPixelSize(30);
+	painter.setFont(font);
+	painter.setPen(nPen);
+	painter.drawText(this->rect(), "Test Text");*/
+
+	customPainterEvent(&painter);
 
     //m_pShaderProgram->release();
 }
@@ -205,6 +239,11 @@ void OpenGLRender::resizeGL(int w, int h)
     /*mProjectionMatrix.setToIdentity();
     mProjectionMatrix.perspective(45.0f, w * 1.0f / h, 0.1f, 500.0f);*/
     update();
+}
+
+void OpenGLRender::customPainterEvent(QPainter* painter)
+{
+	Q_UNUSED(painter)
 }
 
 void OpenGLRender::createTexture(GLuint& textureId, const QString& imageFile)
@@ -231,6 +270,18 @@ void OpenGLRender::createTexture(GLuint& textureId, const QString& imageFile)
     m_nWidth = image.width();
     m_nHeight = image.height();
     rebindVBO(m_nWidth, m_nHeight);
+}
+
+void OpenGLRender::createTexture(GLuint& textureId)
+{
+	m_pFunc->glGenTextures(1, &textureId);
+	m_pFunc->glBindTexture(GL_TEXTURE_2D, textureId);
+	m_pFunc->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	m_pFunc->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	m_pFunc->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	m_pFunc->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	m_pFunc->glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void OpenGLRender::createYUVTexture(void)

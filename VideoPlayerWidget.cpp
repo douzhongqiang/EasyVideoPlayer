@@ -1,28 +1,32 @@
 #include "VideoPlayerWidget.h"
+#include "EncodecGif.h"
 #include <QVBoxLayout>
 #include <QPushButton>
 #include <QFileDialog>
+#include <QMovie>
 
 VideoPlayerWidget::VideoPlayerWidget()
 {
-	this->setWindowFlags(this->windowFlags() | Qt::FramelessWindowHint);
-	this->setAttribute(Qt::WA_TranslucentBackground);
-	this->resize(800, 600);
+	/*setWindowFlags(windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+	setAttribute(Qt::WA_TranslucentBackground);
 
-	this->setStyleSheet(".QWidget{background: rgb(80, 80, 80);}");
-	QWidget* widget = new QWidget;
+	this->setStyleSheet(".QWidget{background: rgb(80, 80, 80);}");*/
+	/*QWidget* widget = new QWidget;
 	QVBoxLayout* l = new QVBoxLayout(this);
-	l->addWidget(widget);
+	l->addWidget(widget);*/
 
 #ifdef USEDOPENFLRENDER
-	m_pRender = new OpenGLRender;
+	m_pRender = new OpenGLRender(this);
+
 #else
 	m_pRender = new QtRenderWidget;
 #endif
 
-    QVBoxLayout* mainLayout = new QVBoxLayout(widget);
+    QVBoxLayout* mainLayout = new QVBoxLayout(this);
 	QWidget* w = dynamic_cast<QWidget*>(m_pRender);
+	w->resize(800, 600);
     mainLayout->addWidget(w);
+	//mainLayout->addStretch();
 
 	m_pSlider = new QSlider(Qt::Horizontal, this);
 	m_pSlider->setMinimum(0);
@@ -44,6 +48,12 @@ VideoPlayerWidget::VideoPlayerWidget()
 	// display time label
 	m_pTimeTag = new QLabel;
 	buttonLayout->addWidget(m_pTimeTag);
+
+	// for testgif
+	QPushButton* createGifButton = new QPushButton("Create Gif");
+	buttonLayout->addWidget(createGifButton);
+	QObject::connect(createGifButton, &QPushButton::clicked, this, &VideoPlayerWidget::onClickedCreateGifButton);
+	
     buttonLayout->addStretch();
 
     m_pDecodecVideoThread = new DecodecVideo(this);
@@ -54,11 +64,14 @@ VideoPlayerWidget::VideoPlayerWidget()
     m_pVideoPlayOper->setVideoDecodec(m_pDecodecVideoThread);
 	QObject::connect(m_pVideoPlayOper, &VideoPlayOper::updateDisplayInfos, \
 		this, &VideoPlayerWidget::onUpdateDisplayInfos);
+
+	// for test
+	m_pEncodecGif = new EncodecGif;
 }
 
 VideoPlayerWidget::~VideoPlayerWidget()
 {
-    
+	delete m_pEncodecGif;
 }
 
 void VideoPlayerWidget::onClickedLoadButton(void)
@@ -87,6 +100,33 @@ void VideoPlayerWidget::onPlayButtonClicked(void)
 		m_pDecodecVideoThread->setCurrentPlayerStatus(DecodecVideo::Player_Pause);
 	else
 		m_pDecodecVideoThread->setCurrentPlayerStatus(DecodecVideo::Player_Playing);
+}
+
+void VideoPlayerWidget::onClickedCreateGifButton(void)
+{
+	QString filename = QFileDialog::getOpenFileName(this, "Open a Gif File", "./");
+	if (filename.isEmpty())
+		return;
+
+	QMovie movie(filename);
+	movie.start();
+	int count = movie.frameCount();
+	int width = movie.frameRect().width();
+	int height = movie.frameRect().height();
+	int frameRate = movie.nextFrameDelay();
+	
+	bool result = m_pEncodecGif->start(width, height, frameRate, filename);
+	if (!result)
+		return;
+	for (int i = 0; i < count; ++i)
+	{
+		movie.jumpToFrame(i);
+		QImage currentImage = movie.currentImage();
+		currentImage.convertToFormat(QImage::Format_RGB888);
+		
+		m_pEncodecGif->writeImageData(currentImage.constBits());
+	}
+	m_pEncodecGif->end();
 }
 
 void VideoPlayerWidget::setCurrentDisplayTime(qreal time)

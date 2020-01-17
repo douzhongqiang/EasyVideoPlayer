@@ -178,6 +178,8 @@ void DecodecVideo::run(void)
 			continue;
 		}
 
+		qDebug() << __FUNCTION__ << " " << QThread::currentThreadId();
+
         AVPacket pkt;
         int result = av_read_frame(m_pFormatContext, &pkt);
         if (result)
@@ -293,10 +295,11 @@ void DecodecVideo::decodecVideo(AVPacket* packet)
 	// acquire 1 
 	m_semaphore.acquire();
 
-	/*QTime testTime;
-	testTime.start();*/
+	QTime testTime;
+	testTime.start();
 
 	AVFrame *tempFrame = av_frame_alloc();
+	qDebug() << "[0] " << testTime.elapsed();
 
     // send packet
 	/*int pix = 0;
@@ -466,6 +469,7 @@ void DecodecVideo::updateToDisplay2(qreal currentTime)
 
 void DecodecVideo::updateToDisplay(qreal currentTime)
 {
+	qDebug() << __FUNCTION__ << " " << QThread::currentThreadId();
 	if (m_nCurrentSize <= 0)
 		return;
 	qreal time = m_frameData[m_nHeadIndex]->pts * av_q2d(m_pFormatContext->streams[m_nVideoIndex]->time_base);

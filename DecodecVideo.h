@@ -95,6 +95,7 @@ private:
     AVCodecContext* m_pAudioCodecContext = nullptr;
     AVFrame* m_pFrame = nullptr;
     AVFrame* m_pRGBFrame = nullptr;
+	AVFrame* m_pTempFrame = nullptr;
     SwsContext* m_pSwsContext = nullptr;
     SwrContext* m_pSwrContext = nullptr;
 

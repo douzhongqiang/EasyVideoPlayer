@@ -30,6 +30,8 @@ protected:
     void paintGL(void) override;
     void resizeGL(int w, int h) override;
 
+	virtual void customPainterEvent(QPainter* painter);
+
 private:
     struct VertexInfo
     {
@@ -81,6 +83,7 @@ private:
     GLuint createGPUProgram(const QString& vertexShaderFile, const QString& fragmentShaderFile);
     // Create Texture
     void createTexture(GLuint& textureId, const QString& imageFile);
+	void createTexture(GLuint& textureId);
     // Create YUV Texture
     void createYUVTexture(void);
     // Load Texture
