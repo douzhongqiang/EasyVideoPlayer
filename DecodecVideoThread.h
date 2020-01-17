@@ -10,5 +10,7 @@ class DecodecVideoThread : public QThread
 public:
 	DecodecVideoThread(QObject* parent);
 	~DecodecVideoThread();
+
+	void run(void) override;
 };
 #endif

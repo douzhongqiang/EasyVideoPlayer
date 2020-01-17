@@ -3,6 +3,10 @@
 
 #include <QThread>
 #include <atomic>
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+}
 
 class DecodecAudioThread : public QThread
 {
@@ -12,6 +16,8 @@ public:
 	DecodecAudioThread(QObject* parent = nullptr);
 	~DecodecAudioThread();
 
+	void setAudioCodecContext(AVCodecContext* codecContext);
+
 	void run(void);
 
 private:
@@ -20,5 +26,7 @@ private:
 	std::atomic<int> m_nHeadIndex;
 	std::atomic<int> m_nTailIndex;
 	std::atomic<int> m_nTotalCount;
+
+	AVCodecContext* m_pAudioCodecContext = nullptr;
 };
 #endif
